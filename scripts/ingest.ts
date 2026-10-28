@@ -102,6 +102,9 @@ async function discoverLinks(src: SeedSource): Promise<string[]> {
 
 // ---------------------------------------------------------------- 分块
 
+/** 单块硬上限：超过模型上下文会被截断，Ollama 会返回降维向量 */
+const MAX_PIECE = 1500;
+
 /** 中文按句读切分，再按字数合并，保留重叠避免上下文断裂 */
 function chunk(text: string): string[] {
   const sentences = text
@@ -109,14 +112,30 @@ function chunk(text: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  // 没有句读的超长段落（表格、列表、整页正文）强制按字切，避免产生巨块
+  const normalized: string[] = [];
+  for (const s of sentences) {
+    if (s.length <= MAX_PIECE) {
+      normalized.push(s);
+    } else {
+      for (let p = 0; p < s.length; p += MAX_PIECE) {
+        normalized.push(s.slice(p, p + MAX_PIECE));
+      }
+    }
+  }
+
   const out: string[] = [];
   let buf = '';
-  for (const s of sentences) {
+  for (const s of normalized) {
     if ((buf + s).length > CHUNK_SIZE && buf) {
       out.push(buf);
       buf = buf.slice(-CHUNK_OVERLAP) + s;
     } else {
       buf += s;
+    }
+    if (buf.length > MAX_PIECE) {
+      out.push(buf);
+      buf = '';
     }
   }
   if (buf.trim()) out.push(buf);
@@ -127,14 +146,40 @@ function chunk(text: string): string[] {
 
 // ---------------------------------------------------------------- 向量化
 
-async function embedBatch(texts: string[]): Promise<number[][]> {
-  const BATCH = 16;
-  const result: number[][] = [];
+async function embedBatch(texts: string[]): Promise<Array<number[] | null>> {
+  const BATCH = 8;
+  const DIM = Number(process.env.EMBEDDING_DIM ?? 1024);
+  const result: Array<number[] | null> = [];
+
   for (let i = 0; i < texts.length; i += BATCH) {
     const part = texts.slice(i, i + BATCH);
     const res = await embedClient.embeddings.create({ model: EMBED_MODEL, input: part });
-    result.push(...res.data.map((d) => d.embedding));
-    await sleep(200); // 轻踩限速
+    let vecs = res.data.map((d) => d.embedding);
+
+    // Ollama 偶发对个别文本降级返回低维向量（如 256），单独重试一次，仍失败则丢弃该片
+    const bad = vecs
+      .map((v, idx) => (v.length !== DIM ? idx : -1))
+      .filter((idx) => idx >= 0);
+
+    if (bad.length) {
+      console.warn(`  ! ${bad.length} 片维度异常，单独重试`);
+      for (const idx of bad) {
+        try {
+          const one = await embedClient.embeddings.create({
+            model: EMBED_MODEL,
+            input: [texts[i + idx].slice(0, 2000)],
+          });
+          const v = one.data[0].embedding;
+          vecs[idx] = v.length === DIM ? v : null!;
+        } catch {
+          vecs[idx] = null!;
+        }
+      }
+      vecs = vecs.map((v) => (Array.isArray(v) && v.length !== DIM ? null! : v));
+    }
+
+    result.push(...vecs);
+    await sleep(150);
   }
   return result;
 }
@@ -153,10 +198,12 @@ async function ingestSource(src: SeedSource) {
     if (!FORCE) {
       const { data } = await supabase
         .from('knowledge_docs')
-        .select('id')
+        .select('id, knowledge_chunks(count)')
         .eq('source_url', url)
         .maybeSingle();
-      if (data) continue;
+      const chunkCount = (data as any)?.knowledge_chunks?.[0]?.count ?? 0;
+      // 已收录且分片完整才跳过；上次向量化失败留下的空壳文档要补跑
+      if (data && chunkCount > 0) continue;
     }
 
     const html = await fetchText(url);
@@ -165,19 +212,18 @@ async function ingestSource(src: SeedSource) {
     const { title, clean, published } = extractArticle(html);
     if (clean.length < 200) continue; // 太短多半是导航页
 
+    // 已在上面做过 source_url 去重，这里直接 insert；
+    // 若库上建了 source_url 唯一索引，可改回 upsert({ onConflict: 'source_url' })
     const { data: doc, error } = await supabase
       .from('knowledge_docs')
-      .upsert(
-        {
+      .insert({
           title: title.slice(0, 200),
           category: src.category,
           source_name: src.name,
           source_url: url,
           license: src.license,
           published_at: published ? new Date(published).toISOString().slice(0, 10) : null,
-        },
-        { onConflict: 'source_url' },
-      )
+      })
       .select('id')
       .single();
 
@@ -189,15 +235,22 @@ async function ingestSource(src: SeedSource) {
     const pieces = chunk(clean);
     if (!pieces.length) continue;
 
-    const vectors = await embedBatch(pieces);
-    const rows = pieces.map((content, i) => ({
-      doc_id: doc.id,
-      seq: i,
-      content,
-      tokens: Math.ceil(content.length / 1.6),
-      embedding: vectors[i],
-      metadata: { source: src.name, category: src.category },
-    }));
+    const vectors = (await embedBatch(pieces)).filter((v): v is number[] => v !== null);
+    if (vectors.length !== pieces.length) {
+      console.warn(`  ! 丢弃 ${pieces.length - vectors.length} 片无法向量化的内容`);
+    }
+
+    const rows = pieces
+      .map((content, i) => ({ content, vector: vectors[i], seq: i }))
+      .filter((r) => r.vector)
+      .map(({ content, vector, seq }) => ({
+        doc_id: doc.id,
+        seq,
+        content,
+        tokens: Math.ceil(content.length / 1.6),
+        embedding: vector,
+        metadata: { source: src.name, category: src.category },
+      }));
 
     const { error: ce } = await supabase.from('knowledge_chunks').upsert(rows, {
       onConflict: 'doc_id,seq',

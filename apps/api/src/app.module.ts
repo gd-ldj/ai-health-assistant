@@ -21,7 +21,7 @@ class EnvGuard implements OnModuleInit {
   private readonly logger = new Logger('Env');
   constructor(private readonly cfg: ConfigService) {}
   onModuleInit() {
-    const parsed = envSchema.safeParse(this.cfg['internalConfig'] ?? process.env);
+    const parsed = envSchema.safeParse({ ...process.env, ...(this.cfg as any).internalConfig });
     if (!parsed.success) {
       this.logger.error('环境变量校验失败：\n' + JSON.stringify(parsed.error.flatten().fieldErrors, null, 2));
       throw new Error('Invalid environment variables');
@@ -37,8 +37,8 @@ class EnvGuard implements OnModuleInit {
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService<Env>) => ({
-        secret: cfg.get('JWT_SECRET', { infer: true })!,
-        signOptions: { expiresIn: cfg.get('JWT_ACCESS_TTL', { infer: true }) },
+        secret: cfg.get<string>('JWT_SECRET')!,
+        signOptions: { expiresIn: (cfg.get<string>('JWT_ACCESS_TTL') ?? '15m') as never },
       }),
     }),
     ThrottlerModule.forRootAsync({

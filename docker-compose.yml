@@ -20,6 +20,23 @@ services:
     networks: [aha]
     # 注意：不要 ports 暴露到公网，仅内网可达
 
+  # 本地 Embedding：零 API 成本、数据不出服务器。
+  # 若换成云端 embedding（硅基流动 bge-m3 免费 / 阿里百炼），删掉本服务并改 .env 的 EMBEDDING_BASE_URL
+  ollama:
+    image: ollama/ollama:0.5.7
+    container_name: aha-ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks: [aha]
+    # 2 核小机器：限制并发，避免拖垮 API
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
   api:
     build:
       context: .
@@ -86,3 +103,4 @@ networks:
 
 volumes:
   redis-data:
+  ollama-data:

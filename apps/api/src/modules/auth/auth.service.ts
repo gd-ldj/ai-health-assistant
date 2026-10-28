@@ -85,13 +85,15 @@ export class AuthService {
 
   private async issue(sub: string, role: string): Promise<TokenPair> {
     const jti = randomUUID();
+    const accessTtl = (process.env.JWT_ACCESS_TTL ?? '15m') as never;
+    const refreshTtl = (process.env.JWT_REFRESH_TTL ?? '30d') as never;
     const accessToken = this.jwt.sign(
       { sub, role, jti, typ: 'access' },
-      { expiresIn: process.env.JWT_ACCESS_TTL ?? '15m' },
+      { expiresIn: accessTtl },
     );
     const refreshToken = this.jwt.sign(
       { sub, jti, typ: 'refresh' },
-      { expiresIn: process.env.JWT_REFRESH_TTL ?? '30d' },
+      { expiresIn: refreshTtl },
     );
     const expiresIn = 900;
     return { accessToken, refreshToken, expiresIn };

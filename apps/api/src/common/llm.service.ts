@@ -9,17 +9,17 @@ import OpenAI from 'openai';
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly chat: OpenAI;
-  private readonly embed: OpenAI;
+  private readonly chatClient: OpenAI;
+  private readonly embedClient: OpenAI;
   private readonly model: string;
   private readonly embedModel: string;
 
   constructor(cfg: ConfigService) {
-    this.chat = new OpenAI({
+    this.chatClient = new OpenAI({
       apiKey: cfg.get<string>('LLM_API_KEY')!,
       baseURL: cfg.get<string>('LLM_BASE_URL')!,
     });
-    this.embed = new OpenAI({
+    this.embedClient = new OpenAI({
       apiKey: cfg.get<string>('EMBEDDING_API_KEY')!,
       baseURL: cfg.get<string>('EMBEDDING_BASE_URL')!,
     });
@@ -32,7 +32,7 @@ export class LlmService {
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     opts: { temperature?: number; maxTokens?: number; signal?: AbortSignal } = {},
   ): AsyncGenerator<string> {
-    const stream = await this.chat.chat.completions.create(
+    const stream = await this.chatClient.chat.completions.create(
       {
         model: this.model,
         messages,
@@ -54,7 +54,7 @@ export class LlmService {
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     tools: OpenAI.Chat.Completions.ChatCompletionTool[],
   ): Promise<OpenAI.Chat.Completions.ChatCompletionMessage> {
-    const res = await this.chat.chat.completions.create({
+    const res = await this.chatClient.chat.completions.create({
       model: this.model,
       messages,
       tools,
@@ -65,7 +65,7 @@ export class LlmService {
   }
 
   async chat(messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]): Promise<string> {
-    const res = await this.chat.chat.completions.create({
+    const res = await this.chatClient.chat.completions.create({
       model: this.model,
       messages,
       temperature: 0.2,
@@ -74,7 +74,7 @@ export class LlmService {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await this.embed.embeddings.create({ model: this.embedModel, input: texts });
+    const res = await this.embedClient.embeddings.create({ model: this.embedModel, input: texts });
     return res.data.map((d) => d.embedding);
   }
 

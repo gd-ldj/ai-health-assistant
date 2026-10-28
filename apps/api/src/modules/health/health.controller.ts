@@ -37,7 +37,7 @@ export class HealthController {
   @Put('profile')
   @Auth()
   upsertProfile(@Req() req: any, @Body() dto: UpsertProfileDto) {
-    return this.health.upsertProfile(req.user.sub, dto);
+    return this.health.upsertProfile(req.user.sub, { ...dto } as Record<string, unknown>);
   }
 
   @Get('metrics')

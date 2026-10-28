@@ -16,7 +16,7 @@ import { RedisService } from '../../common/redis.service';
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
         secret: cfg.get<string>('JWT_SECRET')!,
-        signOptions: { expiresIn: cfg.get<string>('JWT_ACCESS_TTL') },
+        signOptions: { expiresIn: (cfg.get<string>('JWT_ACCESS_TTL') ?? '15m') as never },
       }),
     }),
   ],

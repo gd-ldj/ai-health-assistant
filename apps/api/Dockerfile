@@ -3,9 +3,11 @@ FROM node:22-alpine AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10 --activate
 
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
-RUN pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile
+# 国内机器走 npmmirror，境外可删掉这行
+RUN npm config set registry https://registry.npmmirror.com
+RUN pnpm install --no-frozen-lockfile
 
 COPY apps/api ./apps/api
 RUN pnpm --filter @aha/api build
