@@ -146,42 +146,40 @@ function chunk(text: string): string[] {
 
 // ---------------------------------------------------------------- 向量化
 
-async function embedBatch(texts: string[]): Promise<Array<number[] | null>> {
-  const BATCH = 8;
+/**
+ * 逐条向量化。
+ * 实测 Ollama 的 /v1/embeddings 在批量入参时会偶发少返回或返回降维向量，
+ * 单条调用 100% 稳定（2 核机器上本来也快不了多少，稳定性优先）。
+ */
+const EMBED_URL = `${(process.env.EMBEDDING_BASE_URL ?? 'http://ollama:11434/v1').replace(/\/$/, '')}/embeddings`;
+
+/**
+ * 向量化用原生 fetch 而非 OpenAI SDK：
+ * 同一段文本走 SDK 时 Ollama 会返回 256 维（降维），原生请求稳定 1024 维。
+ */
+async function embedOne(text: string): Promise<number[] | null> {
   const DIM = Number(process.env.EMBEDDING_DIM ?? 1024);
-  const result: Array<number[] | null> = [];
-
-  for (let i = 0; i < texts.length; i += BATCH) {
-    const part = texts.slice(i, i + BATCH);
-    const res = await embedClient.embeddings.create({ model: EMBED_MODEL, input: part });
-    let vecs = res.data.map((d) => d.embedding);
-
-    // Ollama 偶发对个别文本降级返回低维向量（如 256），单独重试一次，仍失败则丢弃该片
-    const bad = vecs
-      .map((v, idx) => (v.length !== DIM ? idx : -1))
-      .filter((idx) => idx >= 0);
-
-    if (bad.length) {
-      console.warn(`  ! ${bad.length} 片维度异常，单独重试`);
-      for (const idx of bad) {
-        try {
-          const one = await embedClient.embeddings.create({
-            model: EMBED_MODEL,
-            input: [texts[i + idx].slice(0, 2000)],
-          });
-          const v = one.data[0].embedding;
-          vecs[idx] = v.length === DIM ? v : null!;
-        } catch {
-          vecs[idx] = null!;
-        }
-      }
-      vecs = vecs.map((v) => (Array.isArray(v) && v.length !== DIM ? null! : v));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(EMBED_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.EMBEDDING_API_KEY ?? ''}` },
+        body: JSON.stringify({ model: EMBED_MODEL, input: text.slice(0, 1500) }),
+      });
+      const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
+      const v = json.data?.[0]?.embedding;
+      if (v && v.length === DIM) return v;
+    } catch {
+      /* 重试 */
     }
-
-    result.push(...vecs);
-    await sleep(150);
   }
-  return result;
+  return null;
+}
+
+async function embedBatch(texts: string[]): Promise<Array<number[] | null>> {
+  const out: Array<number[] | null> = [];
+  for (const t of texts) out.push(await embedOne(t));
+  return out;
 }
 
 // ---------------------------------------------------------------- 主流程

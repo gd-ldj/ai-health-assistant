@@ -23,6 +23,14 @@ export interface SeedSource {
 
 export const SEED_SOURCES: SeedSource[] = [
   {
+    name: '世界卫生组织（中文）',
+    category: 'chronic',
+    entry: 'https://www.who.int/zh/news-room/fact-sheets',
+    urlPattern: /who\.int\/zh\/news-room\/fact-sheets\/detail\//,
+    license: 'WHO 允许非商业转载并标注来源',
+    maxPages: 80,
+  },
+  {
     name: '国家卫生健康委员会',
     category: 'chronic',
     entry: 'http://www.nhc.gov.cn/',
@@ -45,14 +53,6 @@ export const SEED_SOURCES: SeedSource[] = [
     urlPattern: /natcm\.gov\.cn\/.+/,
     license: '政府公开信息，转载请注明来源；商用前复核',
     maxPages: 100,
-  },
-  {
-    name: '世界卫生组织（中文）',
-    category: 'chronic',
-    entry: 'https://www.who.int/zh/news-room/fact-sheets',
-    urlPattern: /who\.int\/zh\/news-room\/fact-sheets\/detail\//,
-    license: 'WHO 允许非商业转载并标注来源',
-    maxPages: 80,
   },
 ];
 

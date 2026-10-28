@@ -13,6 +13,8 @@ export class LlmService {
   private readonly embedClient: OpenAI;
   private readonly model: string;
   private readonly embedModel: string;
+  private readonly embedBase: string;
+  private readonly embedKey: string;
 
   constructor(cfg: ConfigService) {
     this.chatClient = new OpenAI({
@@ -24,7 +26,9 @@ export class LlmService {
       baseURL: cfg.get<string>('EMBEDDING_BASE_URL')!,
     });
     this.model = cfg.get<string>('LLM_MODEL') ?? 'deepseek-chat';
-    this.embedModel = cfg.get<string>('EMBEDDING_MODEL') ?? 'BAAI/bge-m3';
+    this.embedModel = cfg.get<string>('EMBEDDING_MODEL') ?? 'bge-m3';
+    this.embedBase = cfg.get<string>('EMBEDDING_BASE_URL')!;
+    this.embedKey = cfg.get<string>('EMBEDDING_API_KEY') ?? '';
   }
 
   /** 流式对话，逐 chunk 回调给 SSE */
@@ -73,9 +77,22 @@ export class LlmService {
     return res.choices[0]?.message?.content ?? '';
   }
 
+  /**
+   * 向量化用原生 fetch 而非 OpenAI SDK。
+   * 实测：同样的文本走 SDK 时 Ollama 会返回 256 维（降维），原生请求稳定 1024 维。
+   */
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await this.embedClient.embeddings.create({ model: this.embedModel, input: texts });
-    return res.data.map((d) => d.embedding);
+    const res = await fetch(`${this.embedBase.replace(/\/$/, '')}/embeddings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.embedKey}`,
+      },
+      body: JSON.stringify({ model: this.embedModel, input: texts }),
+    });
+    if (!res.ok) throw new Error(`embedding 失败 ${res.status}: ${await res.text()}`);
+    const json = (await res.json()) as { data: Array<{ embedding: number[] }> };
+    return json.data.map((d) => d.embedding);
   }
 
   async embedOne(text: string): Promise<number[]> {
