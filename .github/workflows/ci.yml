@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+  # 密钥泄漏防线：绝不允许任何 .env / 私钥进仓库
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for committed secrets
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example'; then
+            echo "::error::检测到 .env 文件被提交，请立即移除并轮换密钥"
+            exit 1
+          fi
+          if grep -rInE "SUPABASE_SERVICE_ROLE_KEY|JWT_SECRET|LLM_API_KEY" --include="*.ts" --include="*.tsx" --include="*.json" . | grep -v node_modules | grep -vE "\.example"; then
+            echo "::error::源码中出现疑似硬编码密钥"
+            exit 1
+          fi
+          echo "未发现提交到仓库的密钥"

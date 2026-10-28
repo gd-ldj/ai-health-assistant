@@ -1,0 +1,88 @@
+# ============================================================
+#  AI 健康助手 · 生产编排（京东云轻量云主机）
+#  数据库/向量库在 Supabase，这里只跑：web + api + redis + nginx
+#  启动：cp .env.example .env && vim .env && docker compose up -d
+# ============================================================
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: aha-redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [aha]
+    # 注意：不要 ports 暴露到公网，仅内网可达
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: aha-api
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      REDIS_HOST: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "3001"
+    restart: unless-stopped
+    networks: [aha]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: /api
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+    container_name: aha-web
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_URL: http://api:3001
+    depends_on:
+      - api
+    expose:
+      - "3000"
+    restart: unless-stopped
+    networks: [aha]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: aha-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/letsencrypt:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+    networks: [aha]
+
+networks:
+  aha:
+    driver: bridge
+
+volumes:
+  redis-data:

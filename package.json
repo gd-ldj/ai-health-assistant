@@ -1,0 +1,25 @@
+{
+  "name": "ai-health-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI 健康助手：RAG 健康知识库问答 + 健康档案 Agent + 流式对话",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm --filter @aha/web dev",
+    "dev:api": "pnpm --filter @aha/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "ingest": "pnpm --filter @aha/scripts ingest",
+    "db:migrate": "supabase db push",
+    "db:types": "supabase gen types typescript --local > packages/shared/src/db.types.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
