@@ -3,7 +3,7 @@
 > RAG 健康知识库问答 + 健康档案 Agent（工具调用）+ 流式对话。
 > Next.js 15 / NestJS / Supabase (Postgres + pgvector) / Redis / Docker Compose / Nginx。
 
-[![CI](https://github.com/OWNER/ai-health-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/ai-health-assistant/actions/workflows/ci.yml)
+[![CI](https://github.com/gd-ldj/ai-health-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/gd-ldj/ai-health-assistant/actions/workflows/ci.yml)
 
 ---
 
@@ -79,7 +79,7 @@ pnpm dev          # web:3000  api:3001
 ssh root@<公网IP>
 
 curl -fsSL https://get.docker.com | sh
-git clone https://github.com/OWNER/ai-health-assistant.git && cd ai-health-assistant
+git clone https://github.com/gd-ldj/ai-health-assistant.git && cd ai-health-assistant
 cp .env.example .env && vim .env
 
 # 申请证书

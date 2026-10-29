@@ -41,7 +41,7 @@ async function fetchText(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'AI-Health-Assistant-Bot/0.1 (+https://github.com/OWNER/ai-health-assistant)',
+        'User-Agent': 'AI-Health-Assistant-Bot/0.1 (+https://github.com/gd-ldj/ai-health-assistant)',
         'Accept-Language': 'zh-CN,zh;q=0.9',
       },
       signal: AbortSignal.timeout(20_000),
