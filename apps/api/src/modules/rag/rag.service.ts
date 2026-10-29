@@ -52,10 +52,19 @@ export class RagService {
       return [];
     }
 
-    const threshold = Number(this.cfg.get('RAG_SCORE_THRESHOLD') ?? 0.35);
-    return (data ?? [])
-      .filter((r: any) => r.score >= threshold)
-      .map((r: any) => ({
+    const threshold = Number(this.cfg.get('RAG_SCORE_THRESHOLD') ?? 0.45);
+    const rows = (data ?? []) as any[];
+    if (!rows.length) return [];
+
+    // 相对+绝对双阈值：
+    // bge-m3 的余弦相似度整体偏高（不相关文本也能到 0.35+），
+    // 只看绝对值会放进噪声，所以再按「不低于最高分 90%」卡一道。
+    const topScore = rows[0].score as number;
+    const cutoff = Math.max(threshold, topScore * 0.9);
+
+    return rows
+      .filter((r) => r.score >= cutoff)
+      .map((r) => ({
         chunkId: r.chunk_id,
         docId: r.doc_id,
         docTitle: r.doc_title,

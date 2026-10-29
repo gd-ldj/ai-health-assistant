@@ -8,6 +8,7 @@ import {
   applyDecorators,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
 import { JwtUser } from './jwt.strategy';
 
 export const ROLES_KEY = 'roles';
@@ -35,8 +36,12 @@ export class RolesGuard implements CanActivate {
   }
 }
 
+/**
+ * 用法：@Auth() 登录即可；@Auth('admin') 仅管理员。
+ * 顺序不能反：先 AuthGuard('jwt') 解析 token 填充 req.user，RolesGuard 才有东西可判。
+ */
 export const Auth = (...roles: Array<'user' | 'admin'>) =>
   applyDecorators(
-    UseGuards(RolesGuard),
+    UseGuards(AuthGuard('jwt'), RolesGuard),
     roles.length ? Roles(...roles) : Roles('user', 'admin'),
   );
